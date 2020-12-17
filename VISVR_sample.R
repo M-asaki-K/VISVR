@@ -23,7 +23,7 @@ compounds <- read.csv(path)
 View(compounds)
 
 #-----------remove some columns if needed（今回は1, 3, 4列目を除去）--------------
-trimed.compounds <- (compounds[, -c(1, 3, 4)])
+trimed.compounds <- (compounds[, -c(1, 2, 4, 5)])
 
 #-----------select rows without empty cells---------
 is.completes.t <- complete.cases(t(trimed.compounds))
@@ -111,6 +111,7 @@ t_num <- c(100, 200, 500, 1000)
 parameters_rf <- expand.grid(M_num = M_num, t_num = t_num)
 
 #交差検証の設定（全てのモデル計算に共通、パッケージに実装されてることもあるのですが、ここも工夫代が色々あるので独立に設定…groupkfoldとか）
+set.seed(1234)
 nfolds <- 5
 folds <- KFold(train_labels, nfolds)
 folds
@@ -147,7 +148,9 @@ t_num <- min(result[result[, c(3)] <= (min(result[,c(3)])), c(2)])
 #最適化されたランダムフォレストモデルを保存するとともに、重要度を算出
 modelVI <- randomForest(ytrain~., data = df2, mtry = M_num, ntree = t_num)
 VI <- (modelVI$importance)
-VI_std <- as.data.frame(abs((VI - mean(VI)) / sd(VI)))
+VI_std <- as.matrix(abs((VI - mean(VI)) / sd(VI)))
+VI_std
+VI
 
 #重要度でtrain_dataとtest_dataに重みづけするため、データセットの行数に合わせた行列にする
 VI_std <- matrix(VI_std, nrow = 1, ncol = ncol(train_data))
@@ -156,11 +159,12 @@ VI_matrix_test <- (VI_std[rep(seq_len(nrow(VI_std)), nrow(test_data)), ])
 
 #重みづけの乗数（候補は3点、金子研究室の論文に掲載されたgithubから引用）
 #https://github.com/hkaneko1985/dcekit/blob/master/demo_visvr.py
-power_VI <- c(0, 3.1, 0.1)
+power_VI <- c(0, 3.1, 0.1, 0.2, 0.5, 1)
 length(power_VI)
 
 #各重みづけを行ったデータセットに対し、SVMのパラメータを最適化し予測精度を出力
 Power_comparison <- foreach(l = 1:length(power_VI), .combine = rbind,.packages = c("foreach", "doParallel", "readr", "dplyr", "assertr", "rsample", "e1071"), .inorder = FALSE)%do%{
+  
   xtrain <- (VI_matrix_train^power_VI[l])*train_data
   ytrain <- train_labels
   df2 <- as.data.frame(cbind(ytrain,xtrain))
